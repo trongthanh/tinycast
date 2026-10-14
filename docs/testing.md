@@ -132,7 +132,9 @@ If a change touches anything in the right column, the harness on the left is man
 | `dictation-inference-test` | Dictation byte BPE, Fourier/mel features and non-overlapping audio chunks; no downloaded models |
 | `dictation-worker-test` | Dictation's framed channel, worker reuse/switching, removal, cancellation and broken pipes with a fixture helper |
 | `fallback-test` | `Launcher/Model/Fallback.swift`, plus the `CommandID` and `Quicklink` ids it is built from |
-| `dictionary-test` | `Dictionary/Model/DictionaryEntry.swift`, `DictionaryMarkup.swift` — a real XHTML record and the plain-text fallback, read into page blocks |
+| `dictionary-test` | `Dictionary/Model/` — XHTML and plain-text page blocks, candidate previews, normalization, ranking, limits and exact-match precedence |
+| `dictionary-session-test` | Debounce, previous-result retention, out-of-order suggestions, query clearing and screen teardown with injected lookups |
+| `dictionary-screen-test` | Selected-word copying on ⌥↵, Show Details, definition copying, menu shortcuts and bounds; injected effects without touching the clipboard |
 | `callout-test` | `DesignSystem/Theme.swift`, `HotKeys/UI/CalloutPlacement.swift` |
 | `system-action-test` | `SystemActions/Model/SystemAction.swift` |
 | `microphone-mute-test` | Native input mute, delayed confirmation, device switches and failures; injected CoreAudio calls only |
@@ -540,6 +542,25 @@ caches, TCC grants and login item, so this cannot disturb an installed copy.
 - Unchecking a row hides it from search, and its hotkey still fires
 - Deleting a shortcut in Shortcuts frees its alias and hotkey on the next launcher open
 - A shortcut that fails shows Tinycast's dialog with the tool's error
+
+### Dictionary
+
+- Define Word opens empty; a correctly spelled word shows its definition, and ↵ copies it and closes
+- With English spelling and an English dictionary enabled, `recieve` offers `receive` and `relieve`;
+  `definately` offers `definitely` without automatically changing the query
+- “Did you mean?” rows show the candidate followed by pronunciation and a definition preview on one
+  line; the keyword stays readable while a long preview truncates, and no book icon takes its space
+- ↑/↓ moves the suggestion highlight; Show Details (↵ or a click) rewrites the query and shows the definition
+- ⌥↵ copies just the selected candidate and closes the palette; on an exact definition, it copies only
+  the keyword, while ↵ still copies the full definition
+- ⌘↵ opens the selected candidate in Dictionary.app; ⌘K lists Show Details, Copy Word (⌥↵) and Open
+- ⌥↵ while Actions is open copies the underlying selected keyword, matching the Copy Word menu item
+- Typing retains the previous definition or candidate list and selected candidate until the answer
+  arrives; a new answer resets the highlight and closes any stale action menu
+- A nonsense term with no candidates shows “No definition found”; clearing the query restores the
+  empty prompt, and leaving the screen during a lookup never restores stale suggestions
+- Suggestions follow macOS spelling preferences and contain only words an enabled dictionary defines;
+  check Light/Dark, interface sizes, long query headings and VoiceOver candidate labels
 
 ### File Search
 

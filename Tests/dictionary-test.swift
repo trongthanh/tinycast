@@ -123,6 +123,58 @@ struct DictionaryEntryTests {
             """,
             "the copy keeps one line per block")
 
+        expect(
+            DictionaryLookup.candidates(
+                for: "  recieve \n", from: ["recieve ", "receive ", "RECEIVE", "", "  ", "relieve"]),
+            ["receive", "relieve"],
+            "native candidates are trimmed and deduplicated without changing their order")
+        expect(
+            DictionaryLookup.candidates(for: "", from: ["receive"]), [],
+            "an empty query has no suggestions")
+        expect(
+            DictionaryLookup.candidates(for: "école", from: ["ÉCOLE", "écoles", "ecole"]),
+            ["écoles", "ecole"], "case is ignored but accents are preserved")
+        typealias Suggestion = DictionaryLookup.Suggestion
+        let receive = Suggestion(
+            term: " receive ", definition: "receive | riˈsēv | verb\n  be given, presented with, or paid.")
+        let relieve = Suggestion(term: "relieve", definition: "relieve verb make less severe")
+        expect(receive.term, "receive", "the candidate keeps only the keyword for display and copying")
+        expect(
+            receive.preview, "| riˈsēv | verb be given, presented with, or paid.",
+            "the preview keeps pronunciation and meaning on one line without repeating the keyword")
+        expect(
+            Suggestion(term: "recon's", definition: "recon | riˈkän | noun reconnaissance").preview,
+            "recon | riˈkän | noun reconnaissance", "an inflected candidate preserves the base headword")
+        expect(
+            Suggestion(term: "rejoin", definition: "rejoin 1 | rēˈjoin | verb reunite").preview,
+            "1 | rēˈjoin | verb reunite", "homograph numbers remain in the preview")
+        expect(
+            Suggestion(term: "run", definition: "runner noun a person who runs").preview,
+            "runner noun a person who runs", "headword removal never strips a matching prefix")
+        expect(
+            Suggestion(term: "ÉCOLE", definition: "école\t noun\u{00A0}school\n").preview,
+            "noun school", "preview normalization respects Unicode whitespace and case")
+        expect(
+            Suggestion(term: "x", definition: "").preview, "", "an empty definition is safe")
+        let entry = DictionaryEntry(term: "mango", plainText: "a tropical fruit")
+        expect(
+            DictionaryLookup(term: "mango", entry: entry, suggestions: [receive]).suggestions, [],
+            "an exact definition takes precedence over suggestions")
+        expect(
+            DictionaryLookup(term: "recieve", entry: nil, suggestions: [receive, relieve]).suggestions,
+            [receive, relieve], "near misses retain the preview attached to each word")
+        expect(
+            DictionaryLookup(
+                term: "recieve", entry: nil,
+                suggestions: [receive, Suggestion(term: "RECEIVE", definition: "duplicate"), relieve])
+                .suggestions,
+            [receive, relieve], "deduplication keeps the first candidate and its definition")
+        let many = (0..<20).map { Suggestion(term: "word\($0)", definition: "meaning \($0)") }
+        expect(
+            DictionaryLookup(term: "x", entry: nil, suggestions: many).suggestions,
+            Array(many.prefix(DictionaryLookup.suggestionLimit)),
+            "suggestions are bounded in native ranking order")
+
         print("\(passes) passed, \(failures) failed")
         if failures > 0 { exit(1) }
     }

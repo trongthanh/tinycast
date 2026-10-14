@@ -391,7 +391,7 @@ struct RootPaletteView: View {
             .modifier(PaletteHideObserver { if menuOpen { closeMenus() } })
             .onChange(of: vm.query) {
                 if vm.collapseQueryLineBreaks() { return }
-                land(restoringNavigation: true)
+                if vm.mode != .dictionary { land(restoringNavigation: true) }
                 if vm.mode == .fileSearch { fileSearch.search(vm.query, filter: vm.fileSearchFilter) }
                 if vm.mode == .dictionary { dictionary.lookUp(vm.query) }
                 if vm.mode == .menuSearch { menuSearch.filter(vm.query) }
@@ -400,6 +400,11 @@ struct RootPaletteView: View {
                 if vm.mode == .extensionCommand, let handler = extensionScreen.searchTextHandler {
                     extensions.dispatch(handler: handler, arguments: [vm.query])
                 }
+            }
+            .onChange(of: dictionary.lookup) {
+                guard vm.mode == .dictionary else { return }
+                if menuOpen { closeMenus() }
+                land()
             }
             // Anything typed while the command was still starting predates its handler.
             .onChange(of: extensionScreen.searchTextHandler) { previous, handler in
@@ -555,7 +560,7 @@ struct RootPaletteView: View {
                     return .handled
                 }
                 if command { return screen.secondary(at: selection) ? .handled : .ignored }
-                return screen.pasteKeepingWindowOpen(at: selection) ? .handled : .ignored
+                return screen.optionReturn(at: selection) ? .handled : .ignored
             }
             .onKeyPress(.escape) {
                 if menuPanel.isClosing { return .handled }
@@ -1168,7 +1173,7 @@ struct RootPaletteView: View {
             }
             if modifiers.contains(.command) { return screen.secondary(at: selection) }
             if modifiers.contains(.option) {
-                return screen.pasteKeepingWindowOpen(at: selection)
+                return screen.optionReturn(at: selection)
             }
             activateMenuItem(menuSelection)
             return true

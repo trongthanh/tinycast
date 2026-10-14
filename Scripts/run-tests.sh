@@ -282,7 +282,14 @@ run fallback-test          Tinycast/Features/Launcher/Model/Fallback.swift \
                            Tinycast/Features/WindowManagement/Model/WindowCommand.swift \
                            Tinycast/Features/Snippets/Model/Snippet.swift
 run dictionary-test        Tinycast/Features/Dictionary/Model/DictionaryEntry.swift \
-                           Tinycast/Features/Dictionary/Model/DictionaryMarkup.swift
+                           Tinycast/Features/Dictionary/Model/DictionaryMarkup.swift \
+                           Tinycast/Features/Dictionary/Model/DictionaryLookup.swift
+run dictionary-session-test Tinycast/Features/Dictionary/Model/*.swift \
+                           Tinycast/Features/Dictionary/Service/*.swift
+run dictionary-screen-test Tinycast/Features/Dictionary/Model/*.swift \
+                           Tinycast/Features/Dictionary/Service/*.swift \
+                           Tinycast/Features/Dictionary/UI/DictionaryScreen.swift \
+                           Tinycast/Features/Dictionary/UI/DictionaryCoordinator.swift
 run dictation-test         Tinycast/Features/Dictation/Model/DictationModel.swift Tinycast/Features/Dictation/Model/DictationIdleRelease.swift Tinycast/Features/Dictation/Model/DictationTextFormatter.swift
 run dictation-field-test   Tinycast/Features/Dictation/Model/DictationModel.swift \
                            Tinycast/Features/Dictation/Model/DictationAudioChunks.swift \

@@ -2,8 +2,9 @@
 
 `Define Word` is a launcher command and a fallback. The command opens the dictionary screen (`.dictionary`)
 empty; the fallback opens it on whatever was typed. The search field stays the term, so a different
-word is one edit away. Everything is read from the dictionaries enabled in Dictionary.app — no network,
-no bundled word list.
+word is one edit away. Definitions come from the dictionaries enabled in Dictionary.app; near misses
+come from macOS's native spelling candidates, filtered to words those dictionaries can define — no
+network, no bundled word list.
 
 ## Invariants
 
@@ -22,17 +23,32 @@ no bundled word list.
   `t_subsense` bullet, `note` an aside, `x_xoLblBlk` a section label (`ORIGIN`, `PHRASES`). Unknown
   markup reads as plain text in the nearest block, so a format change degrades rather than drops words.
   `dictionary-test` holds a real record as its fixture.
-- **Lookups run off the main actor.** A long entry (`run`, `take`) is a few hundred blocks, so
-  `DictionarySession` debounces the query and looks it up detached, the way `FileSearchSession` does.
-  The previous page stays up until the next resolves, and ↵ and ⌘K act on that page — what is shown
-  is what is copied — so neither the page nor the footer flickers while typing.
+- **Dictionary reads run off the main actor.** A long entry (`run`, `take`) is a few hundred blocks,
+  so `DictionarySession` debounces the query and `DictionaryService.lookUp` runs concurrently. Spelling
+  candidates use `NSSpellChecker.requestCandidates`' background callback, without blocking the main
+  actor; its stream follows cancellation. The session rejects canceled or superseded results.
+  The previous definition or suggestion list stays up until the next resolves, and every action acts
+  on what is shown, so neither the content nor the footer flickers while typing.
+- **Exact definitions win; corrections are never automatic.** Only a term with no definition shows
+  “Did you mean?”. `DictionaryLookup` trims and deduplicates candidates case-insensitively, preserving
+  the native ranking and accents. The service checks that each candidate has a definition before
+  retaining up to eight, each with a single-line definition preview including pronunciation and
+  part of speech when available. The preview comes from the same plain-text definition used to verify
+  the candidate; whitespace is collapsed and a repeated keyword is omitted. Selecting one rewrites
+  the search field and looks it up; it never copies an unrelated definition or silently changes the query.
 
 ## Actions
 
 | Key | Does |
 | --- | --- |
-| ↵ | Copy Definition — the whole entry, one line per block, then the palette closes |
-| ⌘↵ | Open in Dictionary — `dict://<term>`, for every other enabled dictionary |
+| ↑ / ↓ | Select a spelling candidate when suggestions are shown |
+| ↵ / click | Show Details for the selected candidate; on a definition, ↵ copies the whole entry and closes the palette |
+| ⌥↵ | Copy Word — just the selected candidate or displayed definition's keyword, then close the palette |
+| ⌘↵ | Open the displayed definition or selected candidate in Dictionary — `dict://<term>` |
+
+⌘K offers the same actions for the displayed definition or selected candidate.
 
 The first enabled dictionary that knows the term answers, in Dictionary.app's own order. A term none of
-them knows reads "No definition found".
+them knows shows selectable spelling candidates when available, or “No definition found” otherwise.
+The spelling language follows macOS's spelling preferences; candidate availability can vary with
+those preferences and the dictionaries installed on the Mac.
