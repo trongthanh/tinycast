@@ -32,7 +32,9 @@ struct DictionaryScreen: PaletteScreen {
         return (session.lookup?.suggestions ?? []).map(Row.suggestion)
     }
 
-    var primaryActionTitle: String { entry == nil ? "Show Details" : "Copy Definition" }
+    var primaryActionTitle: String {
+        entry == nil ? String(localized: "Show Details") : String(localized: "Copy Definition")
+    }
 
     private func row(at selection: Int) -> Row? {
         rows.indices.contains(selection) ? rows[selection] : nil
@@ -44,21 +46,25 @@ struct DictionaryScreen: PaletteScreen {
         switch row {
         case .entry(let entry):
             primary = PopoverMenuItem(
-                title: "Copy Definition", systemImage: "doc.on.doc", shortcut: "↵"
+                title: String(localized: "Copy Definition"), systemImage: "doc.on.doc", shortcut: "↵"
             ) { core.dictionaryCoordinator.copy(entry) }
         case .suggestion(let suggestion):
             primary = PopoverMenuItem(
-                title: "Show Details", systemImage: "character.book.closed", shortcut: "↵"
+                title: String(localized: "Show Details"), systemImage: "character.book.closed", shortcut: "↵"
             ) { vm.rewriteQuery(suggestion.term) }
         }
         return PopoverMenuContent(
             header: row.term,
             items: [
                 primary,
-                PopoverMenuItem(title: "Copy Word", systemImage: "doc.on.doc", shortcut: "⌥↵") {
+                PopoverMenuItem(
+                    title: String(localized: "Copy Word"), systemImage: "doc.on.doc", shortcut: "⌥↵"
+                ) {
                     core.dictionaryCoordinator.copyWord(row.term)
                 },
-                PopoverMenuItem(title: "Open in Dictionary", systemImage: "book", shortcut: "⌘↵") {
+                PopoverMenuItem(
+                    title: String(localized: "Open in Dictionary"), systemImage: "book", shortcut: "⌘↵"
+                ) {
                     core.dictionaryCoordinator.openInDictionary(term: row.term)
                 }
             ])
@@ -85,7 +91,7 @@ struct DictionaryScreen: PaletteScreen {
     }
 
     func body(selection: Int, scroll: ScrollIntent) -> AnyView {
-        if term.isEmpty { return AnyView(EmptyResults(text: "Type a word to define")) }
+        if term.isEmpty { return AnyView(EmptyResults(text: String(localized: "Type a word to define"))) }
         if let entry { return AnyView(DictionaryEntryView(entry: entry)) }
         if let lookup = session.lookup, !lookup.suggestions.isEmpty {
             return AnyView(
@@ -94,7 +100,9 @@ struct DictionaryScreen: PaletteScreen {
                     selectedTerm: row(at: selection)?.term, scroll: scroll,
                     onActivate: { vm.rewriteQuery($0) }))
         }
-        if session.lookup != nil { return AnyView(EmptyResults(text: "No definition found")) }
+        if session.lookup != nil {
+            return AnyView(EmptyResults(text: String(localized: "No definition found")))
+        }
         return AnyView(Color.clear)
     }
 }
