@@ -2,6 +2,7 @@ import Foundation
 
 struct DictionaryLookup: Equatable, Sendable {
     let term: String
+    let scope: DictionaryScope
     let entry: DictionaryEntry?
     let suggestions: [Suggestion]
 
@@ -22,8 +23,9 @@ struct DictionaryLookup: Equatable, Sendable {
 
     static let suggestionLimit = 8
 
-    init(term: String, entry: DictionaryEntry?, suggestions: [Suggestion] = []) {
+    init(term: String, scope: DictionaryScope = .dictionary, entry: DictionaryEntry?, suggestions: [Suggestion] = []) {
         self.term = term
+        self.scope = scope
         self.entry = entry
         let byTerm = Dictionary(suggestions.map { ($0.term, $0) }, uniquingKeysWith: { first, _ in first })
         self.suggestions = entry == nil ? Self.candidates(for: term, from: suggestions.map(\.term))

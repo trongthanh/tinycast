@@ -32,7 +32,7 @@ struct DictionaryScreenTests {
             ])
         let definition = DictionaryLookup(
             term: "receive", entry: DictionaryEntry(term: "receive", plainText: "verb be given"))
-        let session = DictionarySession { term in term == "receive" ? definition : candidates }
+        let session = DictionarySession { term, _ in term == "receive" ? definition : candidates }
         let palette = PaletteCoordinator()
         let coordinator = DictionaryCoordinator(paletteCoordinator: palette)
         let core = AppCore(dictionaryCoordinator: coordinator)

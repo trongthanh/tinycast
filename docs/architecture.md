@@ -160,7 +160,8 @@ driven imperatively from AppKit. Extension menu extras are dynamic `NSStatusItem
   Chat window when it is key, otherwise Settings. It is only ever on screen while a titled window is
   open, so it is those windows' menu bar. It must stay declarative.
 - **Dialogs** — borderless `DialogPanel`s driven by `DialogController`, the app's only presenter for
-  confirmations, failure reports and value prompts. Presentation is `async`, so nothing blocks the main
+  confirmations, failure reports and value prompts outside Settings, whose panes ask with SwiftUI's
+  sheet-style `confirmationDialog` or `alert`. Presentation is `async`, so nothing blocks the main
   actor, and the presenter refuses a second dialog while one is up — that, not a flag, is what stops a
   held hotkey stacking dialogs.
 - **Support** — a titled `AppWindowController` window owned by `SupportCoordinator`, sized to the
@@ -239,6 +240,7 @@ Tinycast/
                     the PaletteScreen protocol, PaletteCoordinator, PaletteState, PaletteMode
   Windows/          the non-palette AppKit surfaces: AppWindowController, Dialog/, HUD/, About/
   Assets.xcassets/  the app icon and the bundled image sets some catalog symbols resolve to
+  Migrations/       one-shot repairs, each deleted after one stable release (migrations.md)
   Features/
     PaletteRowIndex.swift   the flat selection index — palette-owned, so it sits at the top
     Launcher/ Clipboard/ Calculator/ Calendar/ Emoji/ FileSearch/ MenuSearch/ Notes/

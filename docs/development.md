@@ -6,7 +6,7 @@ verifying a change is [testing.md](testing.md).
 ## Requirements
 
 - macOS 26 or later (Liquid Glass).
-- Xcode 26 — it provides the SwiftUI macro plugin and the SDK.
+- Xcode 27 — it provides the SwiftUI macro plugin and the SDK.
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen), and for linting:
   `brew install swiftlint`.
 - Node, for the generators and the local test stub servers `run-tests.sh` drives. It is the only
@@ -57,7 +57,8 @@ bindings), `~/Library/Application Support/<id>/` (the onboarding marker, Notes, 
 clipboard history, calculator history, launch ranking and frequent emoji; Notes and snippets unless
 a folder is chosen),
 `~/Library/Caches/<id>/` (exchange rates, the update check, staged downloads), the opt-in
-`~/.config/tinycast-dev/settings.json` (`tinycast` on stable), the `SMAppService`
+`~/.config/tinycast-dev/settings.json` (`tinycast` on stable), the `tinycast-dev://` link scheme
+(`tinycast://` on stable), the `SMAppService`
 login item, and the Accessibility / Input Monitoring (TCC) grants — so a local build can neither read
 nor clobber an installed app's state, and both run side by side.
 
@@ -187,8 +188,8 @@ Xcode's re-indent (⌃I), as it always has been. Two consequences worth knowing:
 - `force_try` is an error; `force_cast` only warns, because the AX and AppKit bridges have four
   legitimate ones.
 
-Errors block, warnings do not. No CI runs this script; CodeRabbit runs SwiftLint on each PR but not
-the settings-search check, so run it locally before you open one.
+Errors block, warnings do not. No CI runs this script, so run it locally before you open a
+PR.
 
 ## Generated data
 
@@ -201,10 +202,6 @@ node Scripts/gen-emoji.js            # -> Tinycast/Features/Emoji/Model/EmojiDat
 node Scripts/gen-currencies.js       # -> Tinycast/Features/Calculator/Model/CurrencyData.generated.swift
 node Scripts/gen-countries.js        # -> Tinycast/Features/Calculator/Model/CountryZoneData.generated.swift
 ```
-
-`node Scripts/gen-dictation-sounds.js` synthesizes Dictation's start and stop chimes into
-`Tinycast/Resources/DictationStart.wav` and `DictationStop.wav`. It needs no network and writes the same
-bytes every run; change the notes or levels in the script, never the WAV files.
 
 `gen-emoji.js` also writes one CLDR keyword pack per language in its `KEYWORD_LOCALES`; adding a
 language is one line there. Pass a directory to keep the downloads between runs:

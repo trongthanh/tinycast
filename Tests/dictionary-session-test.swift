@@ -41,9 +41,23 @@ struct DictionarySessionTests {
         }
     }
 
+    @MainActor
+    private final class ScopedResolver {
+        var pending: [DictionaryScope: CheckedContinuation<DictionaryLookup, Never>] = [:]
+
+        func resolve(_ term: String, scope: DictionaryScope) async -> DictionaryLookup {
+            await withCheckedContinuation { pending[scope] = $0 }
+        }
+
+        func finish(_ scope: DictionaryScope) {
+            pending.removeValue(forKey: scope)?.resume(
+                returning: DictionaryLookup(term: "word", scope: scope, entry: nil))
+        }
+    }
+
     static func main() async {
         let resolver = Resolver()
-        let session = DictionarySession { await resolver.resolve($0) }
+        let session = DictionarySession { term, _ in await resolver.resolve(term) }
         let mango = DictionaryLookup(
             term: "mango", entry: DictionaryEntry(term: "mango", plainText: "a tropical fruit"))
         let miss = DictionaryLookup(
@@ -98,6 +112,19 @@ struct DictionarySessionTests {
         resolver.finish(mango)
         await waitUntil { session.lookup == mango }
         session.reset()
+
+        let scoped = ScopedResolver()
+        let scopedSession = DictionarySession { term, scope in await scoped.resolve(term, scope: scope) }
+        scopedSession.lookUp("word")
+        await waitUntil { scoped.pending[.dictionary] != nil }
+        scopedSession.select(.thesaurus)
+        await waitUntil { scoped.pending[.thesaurus] != nil }
+        scoped.finish(.thesaurus)
+        await waitUntil { scopedSession.lookup?.scope == .thesaurus }
+        scoped.finish(.dictionary)
+        try? await Task.sleep(for: .milliseconds(20))
+        expect(scopedSession.lookup?.scope == .thesaurus, "an earlier scope cannot replace the current result")
+        scopedSession.reset()
 
         print("\(passes) passed, \(failures) failed")
         if failures > 0 { exit(1) }

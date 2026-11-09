@@ -100,7 +100,7 @@ struct DictionaryScreen: PaletteScreen {
                     selectedTerm: row(at: selection)?.term, scroll: scroll,
                     onActivate: { vm.rewriteQuery($0) }))
         }
-        if session.lookup != nil {
+        if let lookup = session.lookup, lookup.term == term, lookup.scope == session.scope {
             return AnyView(EmptyResults(text: String(localized: "No definition found")))
         }
         return AnyView(Color.clear)

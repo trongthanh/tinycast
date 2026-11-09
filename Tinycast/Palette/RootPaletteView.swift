@@ -42,9 +42,12 @@ struct RootPaletteView: View {
     @State private var hostWindow: NSWindow?
     /// The pending scroll request; modes are exclusive, so one piece of state serves all.
     @State private var scroll = ScrollIntent(kind: .top)
+    @State private var compactSelection = CompactBarSelection()
 
     /// Compact vs. full; the source of truth is on `AppCore`, so the two can't disagree.
     private var isCollapsed: Bool { core.paletteCoordinator.paletteIsCollapsed }
+
+    private var renderingOutset: CGFloat { isCollapsed ? Theme.Size.paletteGlassOutset : 0 }
 
     private var screen: any PaletteScreen {
         switch vm.mode {
@@ -201,6 +204,15 @@ struct RootPaletteView: View {
             })
     }
 
+    private var dictionaryScopeContent: PopoverMenuContent {
+        PopoverMenuContent(
+            items: DictionaryScope.allCases.map { scope in
+                PopoverMenuItem(title: scope.title, systemImage: scope.systemImage) {
+                    dictionary.select(scope)
+                }
+            })
+    }
+
     private var appMenuContent: PopoverMenuContent {
         let appName = Bundle.main.appDisplayName
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -212,7 +224,7 @@ struct RootPaletteView: View {
                     title: String(localized: "Changelog"),
                     systemImage: "clock.arrow.trianglehead.2.counterclockwise.rotate.90"
                 ) {
-                    if let url = URL(string: "https://github.com/abue-ammar/tinycast/releases") {
+                    if let url = URL(string: "https://tinycast.dev/changelog/") {
                         openURL(url)
                     }
                 },
@@ -261,6 +273,8 @@ struct RootPaletteView: View {
             return headerMenu(fileSearchFilterContent, width: metrics.size.fileSearchFilterMenuWidth)
         case .emojiCategory:
             return headerMenu(emojiCategoryContent, width: metrics.size.emojiCategoryMenuWidth)
+        case .dictionaryScope:
+            return headerMenu(dictionaryScopeContent, width: metrics.size.fileSearchFilterMenuWidth)
         case .aiModel:
             return headerMenu(
                 AIModelMenu.models(coordinator: core.aiChatCoordinator, chat: quickAI),
@@ -329,7 +343,7 @@ struct RootPaletteView: View {
                     }
                 }
                 // No title bar, so this thin top margin is the only place left to grab the panel.
-                .overlay(alignment: .top) { topDragStrip }
+                .overlay(alignment: .topLeading) { topDragStrip }
                 // The menu lives in its own window; this only reports the one to hang it from.
                 .background(
                     WindowReader {
@@ -339,11 +353,14 @@ struct RootPaletteView: View {
                 )
                 // The window's frame is the size source, so the glass and clip stay matched.
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .background(Theme.Colors.panelScrim)
-                .background(GlassEffectView())
+                .background(isCollapsed ? .clear : Theme.Colors.panelScrim)
+                // Square, as rounded glass feathers its edge; the clip alone cuts a crisp corner.
+                .background {
+                    Color.clear.glassEffect(isCollapsed ? .identity : .regular, in: Rectangle())
+                }
                 .overlay {
                     Theme.Colors.dialogDimming
-                        .opacity(core.isDimmingPaletteForDialog ? 1 : 0)
+                        .opacity(core.isDimmingPaletteForDialog && !isCollapsed ? 1 : 0)
                         .allowsHitTesting(false)
                 }
                 .animation(
@@ -352,8 +369,15 @@ struct RootPaletteView: View {
                             ? Theme.Duration.dialogEnter : Theme.Duration.dialogExit),
                     value: core.isDimmingPaletteForDialog
                 )
-                .clipShape(RoundedRectangle(cornerRadius: metrics.radius.panel, style: .continuous))),
-            selection: sel)
+                // Also the window's shape: without it, macOS shadows the default window outline.
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: isCollapsed ? 0 : metrics.radius.panel, style: .continuous
+                    )
+                    .inset(by: -renderingOutset))),
+            selection: sel
+        )
+        .padding(renderingOutset)
     }
 
     /// The emoji grid's observers, split out so `stateObservers` stays within type-checker reach.
@@ -388,11 +412,20 @@ struct RootPaletteView: View {
         emojiObservers(content)
             // Every show bumps focusToken so the search field refocuses.
             .onChange(of: vm.focusToken) {
+                resetCompactSelection()
                 searchFocused = !screen.hidesSearchField
+            }
+            .onChange(of: vm.isVisible) { resetCompactSelection() }
+            .onChange(of: vm.isComposing) {
+                if vm.isComposing { resetCompactSelection() }
+            }
+            .onChange(of: compactCommands) {
+                compactSelection.reconcile(commands: compactCommands)
             }
             // A preserved screen re-summons as it was left, so a menu must end with the palette.
             .modifier(PaletteHideObserver { if menuOpen { closeMenus() } })
             .onChange(of: vm.query) {
+                resetCompactSelection()
                 if vm.collapseQueryLineBreaks() { return }
                 if vm.mode != .dictionary { land(restoringSelection: true) }
                 if vm.mode == .fileSearch { fileSearch.search(vm.query, filter: vm.fileSearchFilter) }
@@ -441,6 +474,7 @@ struct RootPaletteView: View {
                     fileSearch.cancel()
                 }
                 if vm.mode == .dictionary {
+                    dictionary.refreshScopes()
                     dictionary.lookUp(vm.query)
                 } else {
                     dictionary.reset()
@@ -491,6 +525,7 @@ struct RootPaletteView: View {
             .modifier(SearchFieldHiding(hidden: hidesSearchField, apply: applySearchFieldHiding))
             // Several paths flip `paletteIsCollapsed`, so resize the window to match.
             .onChange(of: core.paletteCoordinator.paletteIsCollapsed) {
+                resetCompactSelection()
                 core.paletteCoordinator.syncPaletteSize()
             }
     }
@@ -503,14 +538,20 @@ struct RootPaletteView: View {
             .onKeyPress(keys: [.downArrow], phases: [.down, .repeat]) { press in
                 if let reorder = movePinnedOrFavorite(1, modifiers: press.modifiers) { return reorder }
                 if vm.isControlListOpen { return .ignored }
+                if menuOpen {
+                    moveMenu(1)
+                    return .handled
+                }
+                // Marked text owns these keys: an IME drives its candidate window with them.
+                if vm.isComposing { return .ignored }
                 if isCollapsed {
+                    if compactSelection.command != nil {
+                        activateCompactSelection()
+                        return .handled
+                    }
                     // The compact bar shows no selection, so Down reveals the list's first row.
                     vm.selection = 0
                     core.paletteCoordinator.expandFromCompact()
-                    return .handled
-                }
-                if menuOpen {
-                    moveMenu(1)
                     return .handled
                 }
                 return moveVertically(1)
@@ -523,17 +564,21 @@ struct RootPaletteView: View {
                     moveMenu(-1)
                     return .handled
                 }
+                if vm.isComposing { return .ignored }
                 return moveVertically(-1)
             }
-            // Horizontal arrows step the grid; elsewhere they stay with the caret.
-            .onKeyPress(.leftArrow) {
+            .onKeyPress(keys: [.leftArrow], phases: [.down, .repeat]) { press in
                 if vm.isControlListOpen { return .ignored }
                 if menuOpen { return .handled }
+                if vm.isComposing { return .ignored }
+                if moveCompactSelection(-1, modifiers: press.modifiers) { return .handled }
                 return moveHorizontally(-1) ? .handled : .ignored
             }
-            .onKeyPress(.rightArrow) {
+            .onKeyPress(keys: [.rightArrow], phases: [.down, .repeat]) { press in
                 if vm.isControlListOpen { return .ignored }
                 if menuOpen { return .handled }
+                if vm.isComposing { return .ignored }
+                if moveCompactSelection(1, modifiers: press.modifiers) { return .handled }
                 return moveHorizontally(1) ? .handled : .ignored
             }
             // Plain ↵ runs an open menu's row or non-form selection; ⌘↵ submits forms.
@@ -542,6 +587,11 @@ struct RootPaletteView: View {
                 let option = press.modifiers.contains(.option)
                 if menuOpen, !command, !option {
                     activateMenuItem(menuSelection)
+                    return .handled
+                }
+                if isCollapsed, !command, !option {
+                    guard !vm.isComposing, !vm.isControlListOpen else { return .ignored }
+                    activateCompactSelection()
                     return .handled
                 }
                 if vm.mode.isNativeEditor { return .ignored }
@@ -570,22 +620,28 @@ struct RootPaletteView: View {
             .onKeyPress(.escape) {
                 // An open control list owns Escape before the palette beneath it.
                 if vm.isControlListOpen { return .ignored }
+                if vm.isComposing, !menuOpen { return .ignored }
                 switch PaletteEscapeAction.resolve(
                     menuOpen: menuOpen, menuQuery: vm.menuQuery,
                     argumentFocused: argumentFocused != nil, query: vm.query, mode: vm.mode,
                     canGoBack: vm.canGoBack,
-                    behavior: settings.escapeKeyBehavior)
+                    behavior: settings.escapeKeyBehavior,
+                    compactRootExpanded: settings.compactMode && vm.mode == .launcher && !isCollapsed)
                 {
                 case .clearMenuQuery, .closeMenu:
                     escapeMenu()
                 case .leaveArgumentField:
                     returnFocusToSearchField()
                 case .clearQuery:
+                    if settings.compactMode, vm.mode == .launcher { vm.forceExpanded = true }
                     vm.query = ""
                 case .exitExtensionScreen:
                     core.extensionCoordinator.exitExtensionScreen()
                 case .goBack:
                     goBack()
+                case .collapsePalette:
+                    vm.forceExpanded = false
+                    resetCompactSelection()
                 case .hidePalette:
                     core.paletteCoordinator.hidePalette()
                     if settings.escapeKeyBehavior == .closeAndPopToRoot {
@@ -596,8 +652,9 @@ struct RootPaletteView: View {
             }
             .onKeyPress(keys: [.tab], phases: .down) { press in
                 // ⇥ inside an open list belongs to the list, not to the form's field order.
-                if vm.isControlListOpen { return .handled }
-                if !menuOpen { advanceTabFocus(backwards: press.modifiers.contains(.shift)) }
+                if vm.isControlListOpen || menuOpen { return .handled }
+                if vm.isComposing { return .ignored }
+                advanceTabFocus(backwards: press.modifiers.contains(.shift))
                 return .handled
             }
             .modifier(
@@ -651,7 +708,8 @@ struct RootPaletteView: View {
 
     private var topDragStrip: some View {
         Color.clear
-            .frame(height: metrics.size.headerPadding)
+            // Compact, it stops at the capsule, so a button keeps its whole press.
+            .frame(width: compactCapsuleWidth, height: metrics.size.headerPadding)
             .windowDraggable(settings.paletteDraggable, onBegan: beginDrag, onEnded: endDrag)
     }
 
@@ -672,6 +730,63 @@ struct RootPaletteView: View {
     }
 
     private var header: some View {
+        headerBar
+            // The field stops where the capsule will, so it never runs under a button.
+            .frame(width: compactCapsuleWidth)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Behind the row, which a glass container would otherwise paint over.
+            .background(alignment: .topLeading) {
+                if isCollapsed {
+                    CompactBar(
+                        commands: compactCommands, selection: compactSelection.command,
+                        onRun: runCompactCommand)
+                }
+            }
+            // Next turn, once the show's `land()` and search refocus are done, so neither undoes it.
+            .onChange(of: vm.pendingArgumentEntryID) {
+                Task { @MainActor in focusPendingArgument() }
+            }
+            .onChange(of: argumentFocused) { _, field in vm.noteEditingField(field != nil) }
+            .onChange(of: quickAI.pendingAttachments.map(\.id)) { refreshAttachmentsMenu() }
+    }
+
+    private var compactCommands: [CommandID] {
+        settings.compactBarCommands.filter(appIndex.isCommandEnabled)
+    }
+
+    private func resetCompactSelection() {
+        compactSelection.command = nil
+    }
+
+    private func moveCompactSelection(_ step: Int, modifiers: EventModifiers = []) -> Bool {
+        guard isCollapsed, vm.query.isEmpty, !vm.isComposing, !menuOpen,
+            !vm.isControlListOpen,
+            modifiers.isDisjoint(with: [.command, .control, .option, .shift])
+        else { return false }
+        compactSelection.move(by: step, commands: compactCommands)
+        return true
+    }
+
+    private func activateCompactSelection() {
+        guard let command = compactSelection.command else { return }
+        runCompactCommand(command)
+    }
+
+    private func runCompactCommand(_ command: CommandID) {
+        guard isCollapsed, vm.isVisible, compactCommands.contains(command) else { return }
+        withTransaction(\.disablesAnimations, true) {
+            core.launcherCoordinator.runCommand(command)
+        }
+    }
+
+    /// Where the compact capsule ends beside its buttons; nil while expanded.
+    private var compactCapsuleWidth: CGFloat? {
+        guard isCollapsed else { return nil }
+        return CompactBarGeometry(metrics: metrics, count: compactCommands.count)
+            .capsuleWidth(revealed: true)
+    }
+
+    private var headerBar: some View {
         HStack(alignment: .center, spacing: 0) {
             // Matches the list rows and section headers' own indent below.
             headerGutter(width: metrics.spacing.md * 2)
@@ -690,6 +805,7 @@ struct RootPaletteView: View {
             headerGutter(width: metrics.spacing.xl)
             // One structural position: a field inside a branch loses first responder when it flips.
             headerField
+                .simultaneousGesture(TapGesture().onEnded { resetCompactSelection() })
             if let accessory = headerAccessory {
                 accessory.view
                 // Given room last: at the default priority it would split it with the field.
@@ -722,6 +838,14 @@ struct RootPaletteView: View {
                     help: String(localized: "Filter by category  ⌘P"),
                     action: toggleEmojiCategory)
             }
+            if !isCollapsed, vm.mode == .dictionary, dictionary.hasThesaurus {
+                headerGutter(width: metrics.spacing.md)
+                HeaderMenuButton(
+                    title: dictionary.scope.title, systemImage: dictionary.scope.systemImage,
+                    isOpen: openMenu == .dictionaryScope,
+                    help: String(localized: "Dictionary or thesaurus  ⌘P"),
+                    action: toggleDictionaryScope)
+            }
             if !isCollapsed, vm.mode == .ai {
                 headerGutter(width: metrics.spacing.md)
                 AIModelButton(
@@ -737,20 +861,6 @@ struct RootPaletteView: View {
                         action: toggleAIReasoning)
                 }
             }
-            if isCollapsed, settings.showFavoritesInCompactMode,
-                let launcher = screen as? LauncherScreen
-            {
-                let favorites = launcher.compactFavorites
-                if !favorites.isEmpty {
-                    headerGutter(width: metrics.spacing.md)
-                    CompactFavoritesRow(
-                        favorites: favorites,
-                        showsOverflow: launcher.hasUnshownFavorites,
-                        onLaunch: { core.launcherCoordinator.launch($0) },
-                        onOverflow: { core.paletteCoordinator.expandFromCompact() }
-                    )
-                }
-            }
             if !isCollapsed, let command = extensionCommandScreen,
                 let accessory = command.searchAccessory
             {
@@ -759,18 +869,15 @@ struct RootPaletteView: View {
                     accessory, isOpen: openMenu == .extensionAccessory,
                     action: toggleExtensionSearchAccessory)
             }
-            headerGutter(width: metrics.spacing.md * 2)
+            if isCollapsed { UpdatePill() }
+            // The slack above and below, so the pill stays concentric with the capsule.
+            headerGutter(width: isCollapsed ? metrics.size.headerPadding : metrics.spacing.md * 2)
         }
         // Identical metrics in both states, so typing can't move the search bar.
         .frame(height: metrics.size.headerHeight)
         .padding(.top, metrics.size.headerPadding)
+        .padding(.bottom, isCollapsed ? metrics.size.headerPadding : 0)
         .frame(maxWidth: .infinity)
-        // Next turn, once the show's `land()` and search refocus are done, so neither undoes it.
-        .onChange(of: vm.pendingArgumentEntryID) {
-            Task { @MainActor in focusPendingArgument() }
-        }
-        .onChange(of: argumentFocused) { _, field in vm.noteEditingField(field != nil) }
-        .onChange(of: quickAI.pendingAttachments.map(\.id)) { refreshAttachmentsMenu() }
     }
 
     /// Mode-gated ahead of the cast, which would otherwise cost every other mode a list build.
@@ -910,8 +1017,11 @@ struct RootPaletteView: View {
     ) -> some View {
         // Floating controls, no bar; the edge dissolve ghosts the rows passing beneath.
         HStack(spacing: 0) {
-            appMenuButton
-                .modifier(ExtensionToastSlot(extensions: extensions, showing: vm.mode == .extensionCommand))
+            HStack(spacing: 0) {
+                appMenuButton
+                UpdatePill()
+            }
+            .modifier(ExtensionToastSlot(extensions: extensions, showing: vm.mode == .extensionCommand))
             if showActionGroup {
                 actionGroup(
                     pillLabel: pillLabel, formPrimaryShortcut: formPrimaryShortcut,
@@ -1013,6 +1123,7 @@ struct RootPaletteView: View {
         case .clipboardFilter: toggleClipboardFilter()
         case .fileSearchFilter: toggleFileSearchFilter()
         case .emojiCategory: toggleEmojiCategory()
+        case .dictionaryScope: toggleDictionaryScope()
         case .aiModel: toggleAIModel()
         case .ignored: return false
         }
@@ -1026,6 +1137,16 @@ struct RootPaletteView: View {
         }
         let active = EmojiCategoryFilter.allCases.firstIndex(of: vm.emojiCategoryFilter) ?? 0
         open(.emojiCategory, highlighting: active)
+    }
+
+    private func toggleDictionaryScope() {
+        if openMenu == .dictionaryScope {
+            closeMenus()
+            return
+        }
+        guard dictionary.hasThesaurus else { return }
+        let active = DictionaryScope.allCases.firstIndex(of: dictionary.scope) ?? 0
+        open(.dictionaryScope, highlighting: active)
     }
 
     private func toggleExtensionSearchAccessory() {
@@ -1135,11 +1256,9 @@ struct RootPaletteView: View {
         if presenting, let hostWindow {
             menuPanel.show(
                 view, corner: corner, parent: hostWindow, core: core,
-                clipPath: content.clipPath,
                 onKeyDown: handleMenuPanelKey, onDismiss: closeMenus)
         } else {
-            menuPanel.update(
-                view, corner: corner, core: core, clipPath: content.clipPath)
+            menuPanel.update(view, corner: corner, core: core)
         }
     }
 
@@ -1255,7 +1374,8 @@ struct RootPaletteView: View {
         case .actions: .bottomTrailing
         case .argumentOptions: .belowHeaderTrailing
         case .inputOptions(let corner): corner
-        case .clipboardFilter, .fileSearchFilter, .emojiCategory, .aiModel, .aiReasoning,
+        case .clipboardFilter, .fileSearchFilter, .emojiCategory, .dictionaryScope, .aiModel,
+            .aiReasoning,
             .aiAttachments, .extensionAccessory:
             .belowHeaderTrailing
         case nil: nil
@@ -1385,6 +1505,9 @@ struct RootPaletteView: View {
     private func installHeaderArrowHandler(in window: NSWindow?) {
         guard let panel = window as? PalettePanel else { return }
         panel.onHeaderFieldBoundaryArrow = { boundary in
+            if isCollapsed {
+                return moveCompactSelection(boundary == .leading ? -1 : 1)
+            }
             guard !menuOpen, !vm.isControlListOpen, !isCollapsed,
                 let accessory = headerAccessory, !accessory.fieldNames.isEmpty
             else { return false }
@@ -1462,7 +1585,6 @@ struct RootPaletteView: View {
     }
 
     private func activateSelection() {
-        // Nothing is visibly selected when collapsed, so launch via ⌘1–⌘5 or typing.
         guard !isCollapsed else { return }
         // An unfilled field blocks the launch; focus it instead of acting on a half-typed row.
         if let incomplete = headerAccessory?.firstIncompleteField {
@@ -1486,6 +1608,7 @@ private enum OpenMenu: Equatable {
     case clipboardFilter
     case fileSearchFilter
     case emojiCategory
+    case dictionaryScope
     case aiModel
     case aiReasoning
     case aiAttachments
