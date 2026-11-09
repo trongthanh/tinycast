@@ -141,7 +141,7 @@ search. **Expanded** always shows the full list.
 **Settings → General → Compact Shortcuts** appears when Compact is selected. Add, change, remove
 and reorder up to four shortcuts, or remove them all for a search-only bar. The defaults are Clipboard
 History, Emoji & Symbols, Search Files and Search Quicklinks. You can also choose Search Snippets,
-Show Notes, My Schedule and Quick AI. Show Notes opens the Notes window. A disabled feature's shortcut
+Show Notes, My Schedule, Quick AI and Define Word. Show Notes opens the Notes window. A disabled feature's shortcut
 stays configured and marked Off in Settings, then reappears in its place when enabled again.
 
 The [Toggle System Appearance](/docs/launcher/system-actions) action changes the appearance of

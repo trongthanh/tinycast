@@ -51,7 +51,7 @@ struct DictionaryScreen: PaletteScreen {
         case .suggestion(let suggestion):
             primary = PopoverMenuItem(
                 title: String(localized: "Show Details"), systemImage: "character.book.closed", shortcut: "↵"
-            ) { vm.rewriteQuery(suggestion.term) }
+            ) { show(suggestion) }
         }
         return PopoverMenuContent(
             header: row.term,
@@ -74,8 +74,13 @@ struct DictionaryScreen: PaletteScreen {
         guard let row = row(at: selection) else { return }
         switch row {
         case .entry(let entry): core.dictionaryCoordinator.copy(entry)
-        case .suggestion(let suggestion): vm.rewriteQuery(suggestion.term)
+        case .suggestion(let suggestion): show(suggestion)
         }
+    }
+
+    private func show(_ suggestion: DictionaryLookup.Suggestion) {
+        if let entry = suggestion.entry { session.show(entry) }
+        vm.rewriteQuery(suggestion.term)
     }
 
     func secondary(at selection: Int) -> Bool {
@@ -98,7 +103,11 @@ struct DictionaryScreen: PaletteScreen {
                 DictionarySuggestionsView(
                     suggestions: lookup.suggestions,
                     selectedTerm: row(at: selection)?.term, scroll: scroll,
-                    onActivate: { vm.rewriteQuery($0) }))
+                    onActivate: { term in
+                        if let suggestion = lookup.suggestions.first(where: { $0.term == term }) {
+                            show(suggestion)
+                        }
+                    }))
         }
         if let lookup = session.lookup, lookup.term == term, lookup.scope == session.scope {
             return AnyView(EmptyResults(text: String(localized: "No definition found")))

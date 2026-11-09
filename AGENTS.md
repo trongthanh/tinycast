@@ -140,6 +140,29 @@ feature's doc, under its own `## Invariants`.
 - **XcodeGen owns the project.** `Tinycast.xcodeproj` is committed but generated from `project.yml`;
   after editing it, run `xcodegen generate` and commit both. No SwiftPM, and never `Bundle.module`.
 
+## Fork workflow and local build
+
+- This checkout is a fork: `origin` is `trongthanh/tinycast`, and `upstream` is
+  `abue-ammar/tinycast`. When syncing, fetch `upstream` and merge `upstream/main` into the local
+  branch, preserving fork changes; inspect and resolve conflicts rather than replacing either side.
+  Check the worktree first and leave unrelated changes alone. Do not push unless asked.
+- The local app used for testing lives at
+  `build/DerivedData/Build/Products/Debug/Tinycast Dev.app`. To rebuild **that app**, use:
+
+  ```sh
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+    xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug \
+    -derivedDataPath build/DerivedData build
+  ```
+
+  A build without `-derivedDataPath` can succeed in Xcode's default DerivedData without updating the
+  app the user runs. If unsure which copy is running, inspect its process path. A rebuild does not
+  restart an already running app; say so and do not claim the running process has picked up the change.
+  Keep the normal signing configuration for the runnable build; a `CODE_SIGNING_ALLOWED=NO` build is
+  only a compile check. Ask before quitting or restarting the app.
+- Run the checks below and report failures accurately, including failures reproduced before the change;
+  do not present a successful targeted test or build as a passing full suite.
+
 ## Before you finish
 
 Each item is explained in [testing.md](docs/testing.md#definition-of-done).

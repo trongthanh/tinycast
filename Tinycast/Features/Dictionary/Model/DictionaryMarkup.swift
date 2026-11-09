@@ -9,6 +9,14 @@ enum DictionaryMarkup {
         guard parser.parse() else { return [] }
         return reader.blocks
     }
+
+    static func record(fromXHTML xhtml: String) -> (title: String, blocks: [DictionaryEntry.Block])? {
+        let reader = Reader()
+        let parser = XMLParser(data: Data(xhtml.utf8))
+        parser.delegate = reader
+        guard parser.parse(), let title = reader.title, !reader.blocks.isEmpty else { return nil }
+        return (title, reader.blocks)
+    }
 }
 
 private final class Reader: NSObject, XMLParserDelegate {
@@ -66,6 +74,7 @@ private final class Reader: NSObject, XMLParserDelegate {
     ]
 
     private(set) var blocks: [DictionaryEntry.Block] = []
+    private(set) var title: String?
     private var stack: [Frame] = []
     private var open: (kind: Kind, runs: [Run], depth: Int)?
 
@@ -83,6 +92,7 @@ private final class Reader: NSObject, XMLParserDelegate {
         _ parser: XMLParser, didStartElement name: String, namespaceURI: String?,
         qualifiedName: String?, attributes: [String: String] = [:]
     ) {
+        if name == "d:entry" { title = attributes["d:title"] }
         let classes = Set((attributes["class"] ?? "").split(separator: " ").map(String.init))
         let followsDefinition = definitionJustEnded
         definitionJustEnded = false

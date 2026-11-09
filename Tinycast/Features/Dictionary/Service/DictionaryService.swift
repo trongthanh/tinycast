@@ -10,6 +10,21 @@ enum DictionaryService {
         guard !term.isEmpty, !Task.isCancelled else {
             return DictionaryLookup(term: term, scope: scope, entry: nil)
         }
+        if let matches = DictionaryRecords.resolved?.accentVariants(for: term, in: scope), matches.count > 1 {
+            let variants = matches.map {
+                DictionaryLookup.Suggestion(term: $0.term, definition: $0.text, entry: $0)
+            }
+            let completions = await completions(for: term)
+            var suggestions: [DictionaryLookup.Suggestion] = []
+            var seen = Set(variants.map { $0.term.lowercased() })
+            for candidate in completions {
+                guard !Task.isCancelled, suggestions.count < 5 else { break }
+                guard seen.insert(candidate.lowercased()).inserted,
+                    let entry = entry(for: candidate, in: scope) else { continue }
+                suggestions.append(.init(term: candidate, definition: entry.text, entry: entry))
+            }
+            return DictionaryLookup(term: term, scope: scope, entry: nil, suggestions: suggestions + variants)
+        }
         if let entry = entry(for: term, in: scope) {
             return DictionaryLookup(term: term, scope: scope, entry: entry)
         }
@@ -24,6 +39,13 @@ enum DictionaryService {
             if suggestions.count == DictionaryLookup.suggestionLimit { break }
         }
         return DictionaryLookup(term: term, scope: scope, entry: nil, suggestions: suggestions)
+    }
+
+    @MainActor
+    private static func completions(for term: String) -> [String] {
+        let range = NSRange(location: 0, length: term.utf16.count)
+        return NSSpellChecker.shared.completions(
+            forPartialWordRange: range, in: term, language: "en_US", inSpellDocumentWithTag: 0) ?? []
     }
 
     @MainActor
@@ -106,6 +128,30 @@ private struct DictionaryRecords: Sendable {
 
     func hasThesaurus() -> Bool {
         dictionaries().contains(where: isThesaurus)
+    }
+
+    func accentVariants(for term: String, in scope: DictionaryScope) -> [DictionaryEntry]? {
+        let query = term.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+        for dictionary in dictionaries() {
+            if scope == .thesaurus, !isThesaurus(dictionary) { continue }
+            guard let records = copyRecords(dictionary, term as CFString, nil, nil)?
+                .takeRetainedValue() as? [CFTypeRef], !records.isEmpty else { continue }
+            var entries: [DictionaryEntry] = []
+            for record in records {
+                guard let xhtml = copyData(record, Self.xhtml)?.takeRetainedValue() as String?,
+                    let parsed = DictionaryMarkup.record(fromXHTML: xhtml) else { continue }
+                guard parsed.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+                    == query else { continue }
+                if let index = entries.firstIndex(where: { $0.term == parsed.title }) {
+                    let previous = entries[index]
+                    entries[index] = DictionaryEntry(term: previous.term, blocks: previous.blocks + parsed.blocks)
+                } else {
+                    entries.append(DictionaryEntry(term: parsed.title, blocks: parsed.blocks))
+                }
+            }
+            return entries
+        }
+        return nil
     }
 
     /// The first enabled dictionary in scope that knows the term, in Dictionary.app's own order.

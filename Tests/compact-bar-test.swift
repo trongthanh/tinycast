@@ -19,7 +19,8 @@ struct CompactBarTests {
         check(
             defaults == [.clipboardHistory, .searchEmoji, .searchFiles, .searchQuicklinks],
             "the always-on commands lead the default")
-        check(CommandID.compactBarOptions.count == 8, "eight supported destinations")
+        check(CommandID.compactBarOptions.count == 9, "nine supported destinations")
+        check(CommandID.compactBarOptions.contains(.define), "Define Word is an available shortcut")
         for count in 0...CommandID.compactBarLimit {
             let commands = Array(defaults.prefix(count))
             var selection = CompactBarSelection()
@@ -45,7 +46,7 @@ struct CompactBarTests {
         check(selection.command == defaults.first, "an obsolete selection starts from Search")
 
         check(CommandID.compactBarCommands(from: []) == [], "empty means no shortcuts")
-        let chosen: [CommandID] = [.quickAI, .searchEmoji, .mySchedule, .showNotes]
+        let chosen: [CommandID] = [.quickAI, .searchEmoji, .mySchedule, .define]
         check(
             CommandID.compactBarCommands(from: chosen.map(\.rawValue)) == chosen,
             "all additional destinations retain their order")

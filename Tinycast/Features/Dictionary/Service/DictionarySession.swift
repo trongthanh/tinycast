@@ -52,6 +52,12 @@ final class DictionarySession {
         }
     }
 
+    func show(_ entry: DictionaryEntry) {
+        task?.cancel()
+        term = entry.term
+        lookup = DictionaryLookup(term: entry.term, scope: scope, entry: entry)
+    }
+
     func reset() {
         task?.cancel()
         task = nil

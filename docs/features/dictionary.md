@@ -44,10 +44,13 @@ network, no bundled word list.
   actor; its stream follows cancellation. The session rejects canceled or superseded results.
   The previous definition or suggestion list stays up until the next resolves, and every action acts
   on what is shown, so neither the content nor the footer flickers while typing.
-- **Exact definitions win; corrections are never automatic.** Only a term with no definition shows
-  “Did you mean?”. `DictionaryLookup` trims and deduplicates candidates case-insensitively, preserving
+- **Corrections are never automatic.** When a dictionary returns multiple accent variants of the
+  query, “Did you mean?” lists each record, including an exact match, and opening one shows that
+  record without another ambiguous lookup. Native word completions with dictionary entries precede
+  those variants, up to the same limit. Otherwise, only a term with no definition shows spelling
+  suggestions. `DictionaryLookup` trims and deduplicates candidates case-insensitively, preserving
   the native ranking and accents. The service checks that each candidate has a definition before
-  retaining up to eight, each with a single-line definition preview including pronunciation and
+  retaining up to twelve, each with a single-line definition preview including pronunciation and
   part of speech when available. The preview comes from the definition used to verify the candidate, scoped to the selected
   thesaurus when applicable; whitespace is collapsed and a repeated keyword is omitted. Selecting one rewrites
   the search field and looks it up; it never copies an unrelated definition or silently changes the query.

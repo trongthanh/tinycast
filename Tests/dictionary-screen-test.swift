@@ -80,6 +80,22 @@ struct DictionaryScreenTests {
         screen.activate(at: 0)
         expect(Paster.copied == definition.entry?.text, "Return on an exact entry still copies its definition")
 
+        let vietnamese = DictionaryEntry(term: "trà", plainText: "tea")
+        let variants = DictionaryLookup(term: "tra", entry: nil, suggestions: [
+            .init(term: "tra", definition: "to fit", entry: DictionaryEntry(term: "tra", plainText: "to fit")),
+            .init(term: "trà", definition: "tea", entry: vietnamese)
+        ])
+        let variantsSession = DictionarySession { _, _ in variants }
+        variantsSession.lookUp("tra")
+        await waitUntil { variantsSession.lookup == variants }
+        let variantsScreen = DictionaryScreen(session: variantsSession, core: core, vm: vm)
+        expect(variantsScreen.rows.map(\.term) == ["tra", "trà"], "accent variants include the query")
+        variantsScreen.activate(at: 1)
+        expect(vm.query == "trà", "selecting a variant updates the query")
+        expect(variantsSession.lookup?.entry == vietnamese, "selecting a variant opens its own entry")
+        variantsSession.lookUp("trà")
+        expect(variantsSession.lookup?.entry == vietnamese, "query observation keeps the selected entry")
+
         session.reset()
         expect(!screen.optionReturn(at: 0), "an empty screen has no keyword to copy")
         expect(screen.actions(at: 0) == nil, "an empty screen has no candidate actions")
